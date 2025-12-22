@@ -1,0 +1,11 @@
+PRETTY_NAME="Francisdrake Linux v1.0"
+NAME="Francisdrake Linux"
+VERSION="2025.4"
+VERSION_ID="2025.4"
+VERSION_CODENAME="francisdrake"
+ID=kali
+ID_LIKE=debian
+HOME_URL="https://github.com/SonnerStudio/Francisdrake-Linux"
+SUPPORT_URL="https://github.com/SonnerStudio/Francisdrake-Linux/issues"
+BUG_REPORT_URL="https://github.com/SonnerStudio/Francisdrake-Linux/issues"
+ANSI_COLOR="1;34"
