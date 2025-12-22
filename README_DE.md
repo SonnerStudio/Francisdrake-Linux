@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="artworks/Francisdrake-Linux-Emblem.png" width="500" alt="Francisdrake Linux Emblem">
+  <img src="artworks/Francisdrake-Linux-Emblem.png" width="100%" alt="Francisdrake Linux Emblem">
   
-  <img src="artworks/Francisdrake-Linux-Typography.png" width="800" alt="Francisdrake Linux Title">
+  <img src="artworks/Francisdrake-Linux-Typography.png" width="100%" alt="Francisdrake Linux Title">
   
   <img src="artworks/Francisdrake-Linux.png" width="100%" alt="Francisdrake Linux Banner">
 
