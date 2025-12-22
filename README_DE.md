@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="artworks/Francisdrake-Linux-Emblem.png" width="400" alt="Francisdrake Linux Emblem">
+  <img src="artworks/Francisdrake-Linux-Emblem.png" width="500" alt="Francisdrake Linux Emblem">
   
   <img src="artworks/Francisdrake-Linux-Typography.png" width="800" alt="Francisdrake Linux Title">
   
