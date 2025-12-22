@@ -11,7 +11,7 @@ ISO_SOURCE="/mnt/d/Downloads/kali-linux-2025.4-live-amd64.iso"
 WORK_DIR="$HOME/francisdrake-build"
 ISO_DIR="$WORK_DIR/iso-content"
 SQUASH_DIR="$WORK_DIR/squashfs-root"
-OUTPUT_ISO="/mnt/d/Downloads/francisdrake-linux-v1.iso"
+OUTPUT_ISO="$PROJECT_ROOT/francisdrake-linux-v1.iso"
 PROJECT_ROOT="/mnt/c/Dev/Repos/SonnerStudio/Francisdrake-Linux"
 
 # Farben für Output
@@ -86,8 +86,28 @@ sudo chmod -R +w "$ISO_DIR/isolinux" "$ISO_DIR/boot" 2>/dev/null || true
 find "$ISO_DIR/isolinux" -name "*.cfg" -print0 | xargs -0 sudo sed -i 's/Kali Linux/Francisdrake Linux/g'
 find "$ISO_DIR/boot/grub" -name "*.cfg" -print0 | xargs -0 sudo sed -i 's/Kali Linux/Francisdrake Linux/g'
 
-# Optional: Splash Image ersetzen (experimentell, falls Dimensionen passen)
-# sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$ISO_DIR/isolinux/splash.png" || true
+# 4e. Bootloader & Theme Branding (Aggressiv)
+echo -e "${GREEN}>>> Ersetze Bootloader & Theme Bilder (Total Branding)...${NC}"
+
+# A. Bootloader Images im ISO Root (Isolinux/Grub)
+find "$ISO_DIR" -type f \( -name "splash.png" -o -name "background.png" -o -name "grub.png" -o -name "kali.png" \) -print0 | while IFS= read -r -d '' img; do
+    echo " -> Overwriting ISO image: $img"
+    sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$img"
+done
+
+# B. GRUB Themes im SquashFS (Hier versteckt sich oft das Kali Boot Menü Bild!)
+# Pfad: usr/share/grub/themes/kali/
+GRUB_THEME_DIR="$SQUASH_DIR/usr/share/grub/themes"
+if [ -d "$GRUB_THEME_DIR" ]; then
+    echo -e "${GREEN}>>> Scanne GRUB Themes...${NC}"
+    find "$GRUB_THEME_DIR" -type f \( -name "*.png" -o -name "*.jpg" \) -print0 | while IFS= read -r -d '' theme_img; do
+        # Wir überschreiben NUR Bilder die 'background', 'splash' oder 'logo' im Namen haben, um Icons nicht kaputt zu machen
+        if [[ "$theme_img" == *"background"* ]] || [[ "$theme_img" == *"splash"* ]]; then
+             echo " -> Overwriting Theme Background: $theme_img"
+             sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$theme_img"
+        fi
+    done
+fi
 
 # 5. Dateisystem wieder packen
 echo -e "${GREEN}>>> Packe Filesystem neu (das dauert noch länger)...${NC}"
