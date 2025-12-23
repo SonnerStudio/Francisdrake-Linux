@@ -59,13 +59,20 @@ sudo unsquashfs -d "$SQUASH_DIR" "$ISO_DIR/live/filesystem.squashfs"
 # 4. Anpassungen in Chroot (Branding Injektion)
 echo -e "${GREEN}>>> Injiziere Branding...${NC}"
 
-# 4a. Hintergrundbilder kopieren
+# 4a. Hintergrundbilder kopieren (Aggressiv)
 # Wir kopieren unsere Artworks in den Standard-Hintergrund-Ordner von Kali
 # Pfade können je nach Kali-Version variieren, wir zielen auf /usr/share/backgrounds/kali/
 TARGET_BG_DIR="$SQUASH_DIR/usr/share/backgrounds/kali"
 sudo mkdir -p "$TARGET_BG_DIR"
 sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$TARGET_BG_DIR/default-16x9.png"
 sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$TARGET_BG_DIR/default-4x3.png"
+
+# BRUTE FORCE: Suche nach ALLEN Kali-Hintergründen und ersetze sie
+echo -e "${GREEN}>>> Branding: Brute-Force Desktop Wallpaper Replacement...${NC}"
+find "$SQUASH_DIR/usr/share/backgrounds" -type f \( -name "*kali*" -o -name "default*" \) -name "*.png" -print0 | while IFS= read -r -d '' bg_img; do
+     echo " -> [Brand] Overwriting Desktop Wallpaper: $bg_img"
+     sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$bg_img"
+done
 
 # 4b. OS-Release anpassen
 echo -e "${GREEN}>>> Kopiere System-Konfiguration...${NC}"
@@ -86,27 +93,96 @@ sudo chmod -R +w "$ISO_DIR/isolinux" "$ISO_DIR/boot" 2>/dev/null || true
 find "$ISO_DIR/isolinux" -name "*.cfg" -print0 | xargs -0 sudo sed -i 's/Kali Linux/Francisdrake Linux/g'
 find "$ISO_DIR/boot/grub" -name "*.cfg" -print0 | xargs -0 sudo sed -i 's/Kali Linux/Francisdrake Linux/g'
 
-# 4e. Bootloader & Theme Branding (Aggressiv)
-echo -e "${GREEN}>>> Ersetze Bootloader & Theme Bilder (Total Branding)...${NC}"
+# 4e. Bootloader Image Overwrite (Comprehensive + EFI Fix)
+echo -e "${GREEN}>>> Branding: Comprehensive Bootloader Replacement...${NC}"
 
-# A. Bootloader Images im ISO Root (Isolinux/Grub)
-find "$ISO_DIR" -type f \( -name "splash.png" -o -name "background.png" -o -name "grub.png" -o -name "kali.png" \) -print0 | while IFS= read -r -d '' img; do
-    echo " -> Overwriting ISO image: $img"
-    sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$img"
+# 1. ISO Boot Directory (Isolinux/GRUB)
+echo -e "${GREEN}>>> Replacing ISO boot images...${NC}"
+REPLACED_COUNT=0
+find "$ISO_DIR/isolinux" "$ISO_DIR/boot" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null | while read -r img; do
+    echo " -> [Brand] Overwriting Boot Image: $img"
+    sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$img"
+    ((REPLACED_COUNT++))
 done
+echo "Replaced $REPLACED_COUNT boot images"
 
-# B. GRUB Themes im SquashFS (Hier versteckt sich oft das Kali Boot Menü Bild!)
-# Pfad: usr/share/grub/themes/kali/
+# 2. Extract and Modify EFI Image (Critical for UEFI Boot!)
+EFI_IMG="$ISO_DIR/boot/grub/efi.img"
+if [ -f "$EFI_IMG" ]; then
+    echo -e "${GREEN}>>> Modifying EFI Image...${NC}"
+    EFI_MNT="$WORK_DIR/efi_mnt"
+    sudo mkdir -p "$EFI_MNT"
+    
+    # Mount EFI image
+    sudo mount -o loop "$EFI_IMG" "$EFI_MNT" 2>/dev/null || true
+    
+    if mountpoint -q "$EFI_MNT"; then
+        # Replace images inside EFI
+        find "$EFI_MNT" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.tga" \) 2>/dev/null | while read -r efi_img; do
+            echo " -> [EFI] Overwriting: $efi_img"
+            sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$efi_img"
+        done
+        
+        # Fix GRUB theme configs in EFI
+        find "$EFI_MNT" -name "theme.txt" -o -name "*.cfg" | while read -r cfg; do
+            sudo sed -i 's/Kali Linux/Francisdrake Linux/g' "$cfg" 2>/dev/null || true
+        done
+        
+        sudo umount "$EFI_MNT"
+        echo "EFI Image modified successfully"
+    else
+        echo "WARNING: Could not mount EFI image"
+    fi
+fi
+
+# 3. GRUB Themes in SquashFS
 GRUB_THEME_DIR="$SQUASH_DIR/usr/share/grub/themes"
 if [ -d "$GRUB_THEME_DIR" ]; then
-    echo -e "${GREEN}>>> Scanne GRUB Themes...${NC}"
-    find "$GRUB_THEME_DIR" -type f \( -name "*.png" -o -name "*.jpg" \) -print0 | while IFS= read -r -d '' theme_img; do
-        # Wir überschreiben NUR Bilder die 'background', 'splash' oder 'logo' im Namen haben, um Icons nicht kaputt zu machen
-        if [[ "$theme_img" == *"background"* ]] || [[ "$theme_img" == *"splash"* ]]; then
-             echo " -> Overwriting Theme Background: $theme_img"
-             sudo cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$theme_img"
-        fi
+    echo -e "${GREEN}>>> Nuking GRUB Themes in SquashFS...${NC}"
+    
+    # Replace all images
+    find "$GRUB_THEME_DIR" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.tga" \) 2>/dev/null | while read -r theme_img; do
+        echo " -> [Theme] Overwriting: $theme_img"
+        sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$theme_img"
     done
+    
+    # Fix theme.txt files to point to our images
+    find "$GRUB_THEME_DIR" -name "theme.txt" | while read -r theme_file; do
+        echo " -> [Theme] Fixing config: $theme_file"
+        sudo sed -i 's/Kali Linux/Francisdrake Linux/g' "$theme_file"
+        # Ensure it doesn't reference specific missing images
+        sudo sed -i 's/desktop-image:.*/desktop-image: "background.png"/g' "$theme_file"
+        sudo sed -i 's/title-text:.*/title-text: ""/g' "$theme_file"
+    done
+fi
+
+# 4. Desktop Backgrounds
+echo -e "${GREEN}>>> Nuking Desktop Backgrounds...${NC}"
+find "$SQUASH_DIR/usr/share/backgrounds" "$SQUASH_DIR/usr/share/wallpapers" -type f \( -name "*.png" -o -name "*.jpg" \) 2>/dev/null | while read -r bg_img; do
+    echo " -> [Desktop] Overwriting: $bg_img"
+    sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$bg_img"
+done
+
+# 5. XFCE Config Injection
+XFCE_BG_DIR="$SQUASH_DIR/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml"
+sudo mkdir -p "$XFCE_BG_DIR"
+cat <<EOF | sudo tee "$XFCE_BG_DIR/xfce4-desktop.xml" >/dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="screen0" type="empty">
+      <property name="monitor0" type="empty">
+        <property name="image-path" type="string" value="/usr/share/backgrounds/kali/default-16x9.png"/>
+        <property name="last-image" type="string" value="/usr/share/backgrounds/kali/default-16x9.png"/>
+      </property>
+    </property>
+  </property>
+</channel>
+EOF
+
+# 6. .disk/info Branding
+if [ -d "$ISO_DIR/.disk" ]; then
+    sudo sed -i 's/Kali Linux/Francisdrake Linux/g' "$ISO_DIR/.disk/info" 2>/dev/null || true
 fi
 
 # 5. Dateisystem wieder packen
