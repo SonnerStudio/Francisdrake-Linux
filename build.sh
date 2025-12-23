@@ -98,13 +98,54 @@ echo -e "${GREEN}>>> Branding: Comprehensive Bootloader Replacement...${NC}"
 
 # 1. ISO Boot Directory (Isolinux/GRUB)
 echo -e "${GREEN}>>> Replacing ISO boot images...${NC}"
+
+# Debug: Check if source file exists
+if [ ! -f "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" ]; then
+    echo "ERROR: Source image not found at: $PROJECT_ROOT/artworks/Francisdrake-Linux.png"
+    echo "PROJECT_ROOT=$PROJECT_ROOT"
+    ls -lh "$PROJECT_ROOT/artworks/" || echo "Artworks directory not found"
+    exit 1
+fi
+
+echo "Source image found: $PROJECT_ROOT/artworks/Francisdrake-Linux.png"
+
+# Create Isolinux-compatible splash (640x480, 256 colors)
+echo "Creating Isolinux-compatible splash image..."
+if command -v convert &>/dev/null; then
+    convert "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" -resize 640x480! -colors 256 "$PROJECT_ROOT/artworks/francisdrake-isolinux.png" 2>/dev/null || {
+        echo "WARNING: ImageMagick convert failed, using original image"
+        cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$PROJECT_ROOT/artworks/francisdrake-isolinux.png"
+    }
+else
+    echo "WARNING: ImageMagick not installed, splash may not display in BIOS mode"
+    cp "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$PROJECT_ROOT/artworks/francisdrake-isolinux.png"
+fi
+
 REPLACED_COUNT=0
-find "$ISO_DIR/isolinux" "$ISO_DIR/boot" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null | while read -r img; do
-    echo " -> [Brand] Overwriting Boot Image: $img"
-    sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$img"
-    ((REPLACED_COUNT++))
-done
-echo "Replaced $REPLACED_COUNT boot images"
+
+# Temporarily disable set -e to allow individual copy failures
+set +e
+
+# Replace images - use 640x480 for isolinux, HD for GRUB
+while IFS= read -r img; do
+    if [[ "$img" == *"isolinux"* ]]; then
+        echo " -> [Brand] Overwriting Isolinux Image (640x480): $img"
+        sudo cp --remove-destination "$PROJECT_ROOT/artworks/francisdrake-isolinux.png" "$img"
+    else
+        echo " -> [Brand] Overwriting GRUB Image: $img"
+        sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$img"
+    fi
+    if [ $? -eq 0 ]; then
+        ((REPLACED_COUNT++))
+    else
+        echo "WARNING: Failed to copy to $img (exit code: $?)"
+    fi
+done < <(find "$ISO_DIR/isolinux" "$ISO_DIR/boot" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null)
+
+# Re-enable set -e
+set -e
+
+echo "Replaced $REPLACED_COUNT boot images in ISO"
 
 # 2. Extract and Modify EFI Image (Critical for UEFI Boot!)
 EFI_IMG="$ISO_DIR/boot/grub/efi.img"
@@ -165,29 +206,31 @@ if [ -d "$GRUB_THEME_DIR" ]; then
     done
 fi
 
-# 5. Desktop Backgrounds
-echo -e "${GREEN}>>> Nuking Desktop Backgrounds...${NC}"
-find "$SQUASH_DIR/usr/share/backgrounds" "$SQUASH_DIR/usr/share/wallpapers" -type f \( -name "*.png" -o -name "*.jpg" \) 2>/dev/null | while read -r bg_img; do
-    echo " -> [Desktop] Overwriting: $bg_img"
-    sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$bg_img"
+# 5. Desktop Backgrounds - Copy All Artworks
+echo -e "${GREEN}>>> Adding Francisdrake Wallpapers...${NC}"
+
+# Create a francisdrake subdirectory in backgrounds
+FRANCISDRAKE_BG_DIR="$SQUASH_DIR/usr/share/backgrounds/francisdrake"
+sudo mkdir -p "$FRANCISDRAKE_BG_DIR"
+
+# Copy all artwork files (except the isolinux-specific one)
+WALLPAPER_COUNT=0
+find "$PROJECT_ROOT/artworks" -type f \( -name "*.png" -o -name "*.jpg" \) ! -name "*isolinux*" 2>/dev/null | while read -r artwork; do
+    BASENAME=$(basename "$artwork")
+    echo " -> [Wallpaper] Adding: $BASENAME"
+    sudo cp "$artwork" "$FRANCISDRAKE_BG_DIR/"
+    ((WALLPAPER_COUNT++))
 done
 
-# 5. XFCE Config Injection
+echo "Added $WALLPAPER_COUNT Francisdrake wallpapers to /usr/share/backgrounds/francisdrake/"
+
+# Also overwrite the default Kali wallpaper with main Francisdrake image
+echo " -> [Default] Setting main wallpaper as default"
+sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$SQUASH_DIR/usr/share/backgrounds/kali/default-16x9.png"
+# 6. XFCE Config Injection
 XFCE_BG_DIR="$SQUASH_DIR/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml"
 sudo mkdir -p "$XFCE_BG_DIR"
 cat <<EOF | sudo tee "$XFCE_BG_DIR/xfce4-desktop.xml" >/dev/null
-<?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfce4-desktop" version="1.0">
-  <property name="backdrop" type="empty">
-    <property name="screen0" type="empty">
-      <property name="monitor0" type="empty">
-        <property name="image-path" type="string" value="/usr/share/backgrounds/kali/default-16x9.png"/>
-        <property name="last-image" type="string" value="/usr/share/backgrounds/kali/default-16x9.png"/>
-      </property>
-    </property>
-  </property>
-</channel>
-EOF
 
 # 6. .disk/info Branding
 if [ -d "$ISO_DIR/.disk" ]; then
