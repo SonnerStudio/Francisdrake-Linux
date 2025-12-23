@@ -8,11 +8,11 @@ set -e # Abbruch bei Fehler
 
 # Konfiguration
 ISO_SOURCE="/mnt/d/Downloads/kali-linux-2025.4-live-amd64.iso"
+PROJECT_ROOT="/mnt/c/Dev/Repos/SonnerStudio/Francisdrake-Linux"
 WORK_DIR="$HOME/francisdrake-build"
 ISO_DIR="$WORK_DIR/iso-content"
 SQUASH_DIR="$WORK_DIR/squashfs-root"
 OUTPUT_ISO="$PROJECT_ROOT/francisdrake-linux-v1.iso"
-PROJECT_ROOT="/mnt/c/Dev/Repos/SonnerStudio/Francisdrake-Linux"
 
 # Farben für Output
 GREEN='\033[0;32m'
@@ -135,28 +135,37 @@ if [ -f "$EFI_IMG" ]; then
     fi
 fi
 
-# 3. GRUB Themes in SquashFS
+# 3. GRUB Themes in ISO Boot Directory (CRITICAL - This is what shows at boot!)
+echo -e "${GREEN}>>> Fixing GRUB Theme Configurations in ISO...${NC}"
+find "$ISO_DIR/boot/grub" -name "theme.txt" 2>/dev/null | while read -r theme_file; do
+    echo " -> [Boot Theme] Fixing: $theme_file"
+    # Replace all text references to Kali
+    sudo sed -i 's/Kali Linux/Francisdrake Linux/g' "$theme_file"
+    sudo sed -i 's/Live Boot Menu/Francisdrake Linux Live Menu/g' "$theme_file"
+    # Ensure splash image path is correct
+    sudo sed -i 's|desktop-image:.*|desktop-image: "../splash.png"|g' "$theme_file"
+done
+
+# 4. GRUB Themes in SquashFS (for installed system)
 GRUB_THEME_DIR="$SQUASH_DIR/usr/share/grub/themes"
 if [ -d "$GRUB_THEME_DIR" ]; then
-    echo -e "${GREEN}>>> Nuking GRUB Themes in SquashFS...${NC}"
+    echo -e "${GREEN}>>> Fixing GRUB Themes in SquashFS...${NC}"
     
     # Replace all images
     find "$GRUB_THEME_DIR" -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.tga" \) 2>/dev/null | while read -r theme_img; do
-        echo " -> [Theme] Overwriting: $theme_img"
+        echo " -> [SquashFS Theme] Overwriting: $theme_img"
         sudo cp --remove-destination "$PROJECT_ROOT/artworks/Francisdrake-Linux.png" "$theme_img"
     done
     
-    # Fix theme.txt files to point to our images
-    find "$GRUB_THEME_DIR" -name "theme.txt" | while read -r theme_file; do
-        echo " -> [Theme] Fixing config: $theme_file"
+    # Fix theme.txt files
+    find "$GRUB_THEME_DIR" -name "theme.txt" 2>/dev/null | while read -r theme_file; do
+        echo " -> [SquashFS Theme] Fixing config: $theme_file"
         sudo sed -i 's/Kali Linux/Francisdrake Linux/g' "$theme_file"
-        # Ensure it doesn't reference specific missing images
         sudo sed -i 's/desktop-image:.*/desktop-image: "background.png"/g' "$theme_file"
-        sudo sed -i 's/title-text:.*/title-text: ""/g' "$theme_file"
     done
 fi
 
-# 4. Desktop Backgrounds
+# 5. Desktop Backgrounds
 echo -e "${GREEN}>>> Nuking Desktop Backgrounds...${NC}"
 find "$SQUASH_DIR/usr/share/backgrounds" "$SQUASH_DIR/usr/share/wallpapers" -type f \( -name "*.png" -o -name "*.jpg" \) 2>/dev/null | while read -r bg_img; do
     echo " -> [Desktop] Overwriting: $bg_img"
